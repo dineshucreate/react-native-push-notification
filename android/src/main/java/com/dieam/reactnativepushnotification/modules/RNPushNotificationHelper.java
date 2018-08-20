@@ -1,6 +1,7 @@
 package com.dieam.reactnativepushnotification.modules;
 
 
+import android.annotation.SuppressLint;
 import android.app.AlarmManager;
 import android.app.Application;
 import android.app.Notification;
@@ -38,15 +39,14 @@ public class RNPushNotificationHelper {
     private static final String NOTIFICATION_CHANNEL_ID = "rn-push-notification-channel-id";
 
     private Context context;
-    private RNPushNotificationConfig config;
     private final SharedPreferences scheduledNotificationsPersistence;
     private static final int ONE_MINUTE = 60 * 1000;
     private static final long ONE_HOUR = 60 * ONE_MINUTE;
     private static final long ONE_DAY = 24 * ONE_HOUR;
+    NotificationCompat.Builder notification;
 
     public RNPushNotificationHelper(Application context) {
         this.context = context;
-        this.config = new RNPushNotificationConfig(context);
         this.scheduledNotificationsPersistence = context.getSharedPreferences(RNPushNotificationHelper.PREFERENCES_KEY, Context.MODE_PRIVATE);
     }
 
@@ -160,13 +160,34 @@ public class RNPushNotificationHelper {
                 ApplicationInfo appInfo = context.getApplicationInfo();
                 title = context.getPackageManager().getApplicationLabel(appInfo).toString();
             }
-
-            NotificationCompat.Builder notification = new NotificationCompat.Builder(context, NOTIFICATION_CHANNEL_ID)
-                    .setContentTitle(title)
-                    .setTicker(bundle.getString("ticker"))
-                    .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
-                    .setPriority(NotificationCompat.PRIORITY_HIGH)
-                    .setAutoCancel(bundle.getBoolean("autoCancel", true));
+            NotificationManager notificationManager =
+                    (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                @SuppressLint("WrongConstant") NotificationChannel notificationChannel = new NotificationChannel(NOTIFICATION_CHANNEL_ID, "rn-push-notification-channel", NotificationManager.IMPORTANCE_MAX);
+                notificationChannel.setDescription("Channel description");
+                notificationChannel.enableLights(true);
+                notificationChannel.setLightColor(Color.RED);
+                notificationChannel.setVibrationPattern(new long[]{0, 1000, 500, 1000});
+                notificationChannel.enableVibration(true);
+                notificationManager.createNotificationChannel(notificationChannel);
+                notification = new NotificationCompat.Builder(context, NOTIFICATION_CHANNEL_ID);
+                notification.setAutoCancel(true)
+                        .setDefaults(Notification.DEFAULT_ALL)
+                        .setWhen(System.currentTimeMillis())
+                        .setTicker("Hearty365")
+                        //     .setPriority(Notification.PRIORITY_MAX)
+                        .setContentTitle("Default notification")
+                        .setContentText("Lorem ipsum dolor sit amet, consectetur adipiscing elit.")
+                        .setContentInfo("Info");
+            } else {
+                notification = new NotificationCompat.Builder(context)
+                        .setContentTitle(title)
+                        .setTicker(bundle.getString("ticker"))
+                        .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+                        .setPriority(NotificationCompat.PRIORITY_HIGH)
+                        .setAutoCancel(bundle.getBoolean("autoCancel", true));
+                checkOrCreateChannel(notificationManager);
+            }
 
             String group = bundle.getString("group");
             if (group != null) {
@@ -265,11 +286,8 @@ public class RNPushNotificationHelper {
                 notification.setCategory(NotificationCompat.CATEGORY_CALL);
 
                 String color = bundle.getString("color");
-                int defaultColor = this.config.getNotificationColor();
                 if (color != null) {
                     notification.setColor(Color.parseColor(color));
-                } else if (defaultColor != -1) {
-                    notification.setColor(defaultColor);
                 }
             }
 
@@ -277,10 +295,6 @@ public class RNPushNotificationHelper {
 
             PendingIntent pendingIntent = PendingIntent.getActivity(context, notificationID, intent,
                     PendingIntent.FLAG_UPDATE_CURRENT);
-
-            NotificationManager notificationManager = notificationManager();
-            checkOrCreateChannel(notificationManager);
-
             notification.setContentIntent(pendingIntent);
 
             if (!bundle.containsKey("vibrate") || bundle.getBoolean("vibrate")) {
@@ -480,22 +494,17 @@ public class RNPushNotificationHelper {
         }
     }
 
-    private static boolean channelCreated = false;
-    private void checkOrCreateChannel(NotificationManager manager) {
+    private static void checkOrCreateChannel(NotificationManager manager) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O)
-            return;
-        if (channelCreated)
             return;
         if (manager == null)
             return;
 
+        final CharSequence name = "rn-push-notification-channel";
         int importance = NotificationManager.IMPORTANCE_DEFAULT;
-        NotificationChannel channel = new NotificationChannel(NOTIFICATION_CHANNEL_ID, this.config.getChannelName(), importance);
-        channel.setDescription(this.config.getChannelDescription());
+        NotificationChannel channel = new NotificationChannel(NOTIFICATION_CHANNEL_ID, name, importance);
         channel.enableLights(true);
         channel.enableVibration(true);
-
         manager.createNotificationChannel(channel);
-        channelCreated = true;
     }
 }
